@@ -1,0 +1,125 @@
+bundle:
+  name: rezolake
+  # Direct deployment engine (required for apps lifecycle.started; prod state is already direct).
+  engine: direct
+
+# One file per environment (targets/<name>.yml). scripts/setup.py writes them; see SETUP.md.
+include:
+  - targets/*.yml
+
+variables:
+  # Set per target (see the targets section at the bottom).
+  catalog:
+    description: Unity Catalog catalog that will hold the rezolake2_* schemas (must exist; deployer needs CREATE SCHEMA)
+  sql_warehouse_id:
+    description: SQL warehouse the app reads through (Lakehouse//RT recommended; any serverless/pro warehouse works)
+  lakebase_project:
+    description: Lakebase Autoscaling project for app operational state (projects/<id>); bootstrap creates it if missing
+  # Derived / defaults.
+  app_name:
+    description: Databricks App name (change it to run two environments in one workspace)
+    default: rezolake
+  lakebase_branch:
+    description: Lakebase branch resource name
+    default: ${var.lakebase_project}/branches/production
+  lakebase_database:
+    description: Lakebase database resource name
+    default: ${var.lakebase_project}/branches/production/databases/databricks-postgres
+  lakebase_endpoint:
+    description: Lakebase endpoint resource name (engine connection)
+    default: ${var.lakebase_project}/branches/production/endpoints/primary
+  pg_database:
+    description: Postgres database name
+    default: databricks_postgres
+  vs_endpoint:
+    description: AI Search (Vector Search) endpoint; bootstrap creates it if missing
+    default: rezolake-vs-endpoint
+
+artifacts:
+  engine:
+    type: whl
+    path: ./engine
+    build: uv build --wheel
+
+sync:
+  exclude:
+    - engine/**
+    - docs/**
+    - test_data/**
+
+resources:
+  jobs:
+    resolve:
+      name: rezolake-resolve
+      description: Rezolake resolution engine (ingest -> canonicalize -> block -> match -> decide -> cluster -> survive)
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      parameters:
+        - { name: mode, default: INCREMENTAL }
+        - { name: entity_type_id, default: "" }
+        - { name: run_id, default: "" }
+        - { name: max_records, default: "" }
+        - { name: rematch_all, default: "false" }
+        - { name: trigger_source, default: manual }
+        - { name: requested_by, default: "" }
+        - { name: catalog, default: "${var.catalog}" }
+        - { name: lakebase_endpoint, default: "${var.lakebase_endpoint}" }
+        - { name: pg_database, default: "${var.pg_database}" }
+        - { name: pg_schema, default: rezolake_v2 }
+        - { name: vs_endpoint, default: "${var.vs_endpoint}" }
+        - { name: app_sp, default: "" }
+      tasks:
+        - task_key: engine
+          environment_key: engine
+          python_wheel_task:
+            package_name: rezolake_engine
+            entry_point: main
+            named_parameters:
+              mode: "{{job.parameters.mode}}"
+              entity_type_id: "{{job.parameters.entity_type_id}}"
+              run_id: "{{job.parameters.run_id}}"
+              max_records: "{{job.parameters.max_records}}"
+              rematch_all: "{{job.parameters.rematch_all}}"
+              trigger_source: "{{job.parameters.trigger_source}}"
+              requested_by: "{{job.parameters.requested_by}}"
+              catalog: "{{job.parameters.catalog}}"
+              lakebase_endpoint: "{{job.parameters.lakebase_endpoint}}"
+              pg_database: "{{job.parameters.pg_database}}"
+              pg_schema: "{{job.parameters.pg_schema}}"
+              vs_endpoint: "{{job.parameters.vs_endpoint}}"
+              app_sp: "{{job.parameters.app_sp}}"
+              job_run_id: "{{job.run_id}}"
+      environments:
+        - environment_key: engine
+          spec:
+            environment_version: "6"
+            dependencies:
+              - ./engine/dist/*.whl
+
+  apps:
+    app:
+      name: ${var.app_name}
+      description: "Rezolake - Master Data Management on Databricks"
+      source_code_path: ./
+      lifecycle:
+        started: true
+      user_api_scopes:
+        - sql
+        - catalog.catalogs:read
+        - catalog.schemas:read
+        - catalog.tables:read
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.sql_warehouse_id}
+            permission: CAN_USE
+        - name: postgres
+          postgres:
+            branch: ${var.lakebase_branch}
+            database: ${var.lakebase_database}
+            permission: CAN_CONNECT_AND_CREATE
+        - name: resolve-job
+          job:
+            id: ${resources.jobs.resolve.id}
+            permission: CAN_MANAGE_RUN

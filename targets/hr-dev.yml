@@ -1,0 +1,14 @@
+# Rezolake environment `hr-dev` (written by scripts/setup.py; edit freely).
+targets:
+  hr-dev:
+    workspace:
+      host: https://<your-dev-workspace>.cloud.databricks.com
+      profile: <your-dev-profile>
+    variables:
+      catalog: your_dev_catalog
+      sql_warehouse_id: "<your-sql-warehouse-id>"
+      lakebase_project: projects/rezolake
+    # This workspace's npm proxy is missing packages; the app build uses the public registry (.npmrc).
+    sync:
+      include:
+        - ../.npmrc

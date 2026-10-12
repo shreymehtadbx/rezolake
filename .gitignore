@@ -1,0 +1,32 @@
+.DS_Store
+node_modules/
+client/dist/
+dist/
+build/
+.env
+.databricks/
+.smoke-test/
+test-results/
+playwright-report/
+
+# Auto-generated types (endpoint-specific, varies per developer)
+shared/appkit-types/serving.d.ts
+
+
+# engine
+engine/.venv/
+engine/dist/
+engine/build/
+**/__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# local agent/tooling state
+.isaac/
+
+# Local MLflow tracking stores (created by local engine runs)
+mlflow.db
+mlruns/
+
+# Per-environment npm registry override (written by scripts/setup.py; uploaded only by targets that include it)
+.npmrc

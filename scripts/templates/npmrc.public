@@ -1,0 +1,4 @@
+# Fetch every package from the public npm registry (lockfile integrity hashes still apply).
+# Copied to .npmrc by scripts/setup.py --npm-registry public (see SETUP.md, "npm registry").
+registry=https://registry.npmjs.org/
+replace-registry-host=always
